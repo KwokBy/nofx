@@ -24,8 +24,9 @@ var (
 	reInvisibleRunes = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
 
 	// 新增：XML标签提取（支持思维链中包含任何字符）
-	reReasoningTag = regexp.MustCompile(`(?s)<reasoning>(.*?)</reasoning>`)
-	reDecisionTag  = regexp.MustCompile(`(?s)<decision>(.*?)</decision>`)
+	// (?is) = 大小写不敏感 + . 匹配换行符，支持 <reasoning>, <REASONING>, <Reasoning> 等变体
+	reReasoningTag = regexp.MustCompile(`(?is)<reasoning>(.*?)</reasoning>`)
+	reDecisionTag  = regexp.MustCompile(`(?is)<decision>(.*?)</decision>`)
 )
 
 // PositionInfo 持仓信息
@@ -520,6 +521,13 @@ func extractCoTTrace(response string) string {
 
 // extractDecisions 提取JSON决策列表
 func extractDecisions(response string) ([]Decision, error) {
+	// 🔍 调试日志：输出响应摘要（便于诊断 DeepSeek 等模型的响应格式问题）
+	responseSummary := response
+	if len(responseSummary) > 200 {
+		responseSummary = responseSummary[:200] + "..."
+	}
+	log.Printf("[DEBUG] extractDecisions 开始解析，响应摘要: %s", responseSummary)
+
 	// 预清洗：去零宽/BOM
 	s := removeInvisibleRunes(response)
 	s = strings.TrimSpace(s)
@@ -680,8 +688,9 @@ func compactArrayOpen(s string) string {
 
 // validateDecisions 验证所有决策（需要账户信息和杠杆配置）
 func validateDecisions(decisions []Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int) error {
-	for i, decision := range decisions {
-		if err := validateDecision(&decision, accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
+	// 修复：使用索引而不是 range 副本，确保修改能够生效（如杠杆自动修正）
+	for i := range decisions {
+		if err := validateDecision(&decisions[i], accountEquity, btcEthLeverage, altcoinLeverage); err != nil {
 			return fmt.Errorf("决策 #%d 验证失败: %w", i+1, err)
 		}
 	}
